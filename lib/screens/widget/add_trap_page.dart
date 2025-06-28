@@ -13,52 +13,88 @@ class _AddTrapPageState extends State<AddTrapPage> {
   // --- Controllers for text input fields ---
   final TextEditingController _tripNameController = TextEditingController();
   final TextEditingController _tripDateController = TextEditingController();
-  final TextEditingController _tripPriceController = TextEditingController();
   final TextEditingController _tripDescriptionController =
       TextEditingController();
   final TextEditingController _tripTypeController = TextEditingController();
   final TextEditingController _tripStatusController = TextEditingController();
-  final TextEditingController _tripDurationController = TextEditingController();
+  final TextEditingController _madinaNightsController =
+      TextEditingController(); // متحكم لعدد ليالي المدينة
+  final TextEditingController _makkahNightsController =
+      TextEditingController(); // متحكم لعدد ليالي مكة
+  final TextEditingController _tripDurationController =
+      TextEditingController(); // متحكم لمدة الرحلة الإجمالية (مجموع الليالي)
 
   // --- Selected date variable ---
   DateTime? _selectedDate;
 
+  // --- Calculated total nights ---
+  int _totalNights = 0; // متغير لتخزين مجموع الليالي المحسوب
+
+  @override
+  void initState() {
+    super.initState();
+    // إضافة مستمعين للتغيرات في حقلي ليالي المدينة ومكة
+    // عند أي تغيير، يتم استدعاء دالة _calculateTotalNights
+    _madinaNightsController.addListener(_calculateTotalNights);
+    _makkahNightsController.addListener(_calculateTotalNights);
+  }
+
+  // دالة لحساب مجموع الليالي وتحديث حقل مدة الرحلة في الواجهة
+  void _calculateTotalNights() {
+    final int madinaNights = int.tryParse(_madinaNightsController.text) ?? 0;
+    final int makkahNights = int.tryParse(_makkahNightsController.text) ?? 0;
+
+    final int newTotalNights = madinaNights + makkahNights;
+
+    // تحديث الحالة فقط إذا كانت القيمة قد تغيرت لتجنب إعادة بناء غير ضرورية
+    if (newTotalNights != _totalNights) {
+      setState(() {
+        _totalNights = newTotalNights;
+        _tripDurationController.text = _totalNights
+            .toString(); // تحديث حقل مدة الرحلة في الواجهة
+        // print('Total Nights Calculated: $_totalNights'); // للتشخيص
+      });
+    }
+  }
+
   @override
   void dispose() {
-    // Dispose of all controllers to prevent memory leaks
+    // إزالة المستمعين والتخلص من جميع المتحكمات لتجنب تسرب الذاكرة
     _tripNameController.dispose();
     _tripDateController.dispose();
-    _tripPriceController.dispose();
     _tripDescriptionController.dispose();
     _tripTypeController.dispose();
     _tripStatusController.dispose();
+    // إزالة المستمعين قبل التخلص من المتحكمات المرتبطة بهم
+    _madinaNightsController.removeListener(_calculateTotalNights);
+    _makkahNightsController.removeListener(_calculateTotalNights);
+    _madinaNightsController.dispose();
+    _makkahNightsController.dispose();
     _tripDurationController.dispose();
     super.dispose();
   }
 
-  // --- Function to select a date using a DatePicker ---
+  // دالة لاختيار تاريخ باستخدام DatePicker
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate:
-          _selectedDate ??
-          DateTime.now(), // Start with today's date if none selected
-      firstDate: DateTime(2000), // Earliest selectable date
-      lastDate: DateTime(2101), // Latest selectable date
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        // Format the date to YYYY-MM-DD (ISO 8601 standard) for database compatibility
+        // تنسيق التاريخ إلى YYYY-MM-DD
         _tripDateController.text =
             "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
       });
     }
   }
 
-  // --- Function to save trip data to Supabase ---
+  // دالة لحفظ بيانات الرحلة إلى Supabase
   Future<void> _saveTripData() async {
-    // Basic validation: ensure trip name is not empty
+    // التحقق الأساسي: التأكد من أن اسم الرحلة ليس فارغاً
     if (_tripNameController.text.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -74,13 +110,13 @@ class _AddTrapPageState extends State<AddTrapPage> {
     }
 
     try {
-      // Prepare data for insertion with CORRECT Supabase column names
+      // إعداد البيانات للإدراج في Supabase باستخدام أسماء الأعمدة الصحيحة
       final Map<String, dynamic> tripData = {
         'trip_name': _tripNameController.text,
         'trip_date': _tripDateController.text.isEmpty
             ? null
             : _tripDateController.text,
-        'trip_total': double.tryParse(_tripPriceController.text),
+        'trip_total': 0.0, // سيتم تحديث هذا لاحقًا بواسطة مجموع العقود المرتبطة
         'trip_note': _tripDescriptionController.text.isEmpty
             ? null
             : _tripDescriptionController.text,
@@ -90,18 +126,22 @@ class _AddTrapPageState extends State<AddTrapPage> {
         'case_trip': _tripStatusController.text.isEmpty
             ? null
             : _tripStatusController.text,
-        'trip_time': int.tryParse(_tripDurationController.text),
+        'trip_time': _totalNights, // حفظ مجموع الليالي المحسوب هنا
+        'madinah_nights':
+            int.tryParse(_madinaNightsController.text) ??
+            0, // حفظ ليالي المدينة بشكل منفصل
+        'makkah_nights':
+            int.tryParse(_makkahNightsController.text) ??
+            0, // حفظ ليالي مكة بشكل منفصل
       };
 
-      // Perform the insert operation
-      // .select() returns the inserted data or throws an error on failure
-      final List<Map<String, dynamic>> response = await Supabase.instance.client
+      // إجراء عملية الإدراج في جدول 'trips'
+      await Supabase.instance.client
           .from('trips')
           .insert(tripData)
-          .select(); // Use .select() to get the inserted data (optional, but good for confirmation)
+          .select(); // استخدام .select() للحصول على البيانات المدرجة (اختياري)
 
       if (mounted) {
-        // If no exception was thrown, the insertion was successful
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -110,18 +150,21 @@ class _AddTrapPageState extends State<AddTrapPage> {
             ),
           ),
         );
-        // Clear controllers after successful insertion
+        // مسح المتحكمات بعد الحفظ بنجاح
         _tripNameController.clear();
         _tripDateController.clear();
-        _tripPriceController.clear();
         _tripDescriptionController.clear();
         _tripTypeController.clear();
         _tripStatusController.clear();
-        _tripDurationController.clear();
-        _selectedDate = null; // Clear selected date as well
+        _madinaNightsController.clear();
+        _makkahNightsController.clear();
+        _tripDurationController.clear(); // مسح حقل المدة أيضاً
+        _selectedDate = null; // مسح التاريخ المحدد
+        setState(() {
+          _totalNights = 0; // إعادة تعيين مجموع الليالي المحسوب
+        });
       }
     } on PostgrestException catch (e) {
-      // Handles specific Supabase database errors (e.g., constraint violations, RLS issues)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -131,10 +174,9 @@ class _AddTrapPageState extends State<AddTrapPage> {
             ),
           ),
         );
-        print('Supabase Postgrest Error: ${e.message}'); // Log for debugging
+        // print('Supabase Postgrest Error: ${e.message}'); // يمكنك تفعيل هذا للتشخيص
       }
     } catch (e) {
-      // Handles any other unexpected errors during the process
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -144,35 +186,31 @@ class _AddTrapPageState extends State<AddTrapPage> {
             ),
           ),
         );
-        print('General Save Error: ${e.toString()}'); // Log for debugging
+        // print('General Save Error: ${e.toString()}'); // يمكنك تفعيل هذا للتشخيص
       }
     }
   }
 
-  // --- Helper widget to build custom text fields with improved styling ---
+  // دالة مساعدة لبناء حقول إدخال نصية مخصصة بتحسينات في التصميم
   Widget _buildCustomTextField(
     TextEditingController controller,
     String labelText,
     String hintText,
     TextInputType keyboardType, {
-    int maxLines = 1, // Default to single line, can be overridden
-    List<TextInputFormatter>? inputFormatters, // Optional formatters
-    VoidCallback? onTap, // Optional tap callback (e.g., for date picker)
-    bool readOnly = false, // Optional read-only state (e.g., for date picker)
+    int maxLines = 1,
+    List<TextInputFormatter>? inputFormatters,
+    VoidCallback? onTap,
+    bool readOnly = false,
   }) {
     return TextField(
       controller: controller,
-      textDirection:
-          TextDirection.rtl, // Text direction right-to-left for input
-      keyboardType: keyboardType, // Numeric keyboard for number inputs
-      maxLines: maxLines, // Set max lines for multiline input
-      inputFormatters: inputFormatters, // Apply provided formatters
-      onTap: onTap, // Set the onTap callback
-      readOnly: readOnly, // Set read-only state
-      style: TextStyle(
-        fontSize: 20,
-        color: Colors.blueGrey.shade900,
-      ), // Text field font size and color
+      textDirection: TextDirection.rtl,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      inputFormatters: inputFormatters,
+      onTap: onTap,
+      readOnly: readOnly,
+      style: TextStyle(fontSize: 20, color: Colors.blueGrey.shade900),
       decoration: InputDecoration(
         labelText: labelText,
         labelStyle: TextStyle(
@@ -182,33 +220,25 @@ class _AddTrapPageState extends State<AddTrapPage> {
         ),
         hintText: hintText,
         hintStyle: TextStyle(color: Colors.blueGrey.shade300, fontSize: 16),
-        hintTextDirection: TextDirection.rtl, // Hint text direction
+        hintTextDirection: TextDirection.rtl,
         filled: true,
-        fillColor: Colors.white, // White fill for text fields
+        fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(
-            12,
-          ), // Rounded corners for input fields
-          borderSide: BorderSide.none, // No default border
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: Colors.blue.shade300,
-            width: 2,
-          ), // Lighter blue border when enabled
+          borderSide: BorderSide(color: Colors.blue.shade300, width: 2),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: Colors.deepPurple.shade400,
-            width: 2.5,
-          ), // Thicker, vibrant border on focus
+          borderSide: BorderSide(color: Colors.deepPurple.shade400, width: 2.5),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 20,
           vertical: 15,
-        ), // Padding inside text field
+        ),
       ),
     );
   }
@@ -218,15 +248,15 @@ class _AddTrapPageState extends State<AddTrapPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('إضافة رحلة جديدة'),
-        backgroundColor: Colors.indigo.shade700, // Consistent AppBar color
-        foregroundColor: Colors.white, // Set icon and text color to white
+        backgroundColor: Colors.indigo.shade700,
+        foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0), // Consistent padding
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            // Trip Name Field
+            // حقل اسم الرحلة
             _buildCustomTextField(
               _tripNameController,
               'اسم الرحلة',
@@ -236,42 +266,29 @@ class _AddTrapPageState extends State<AddTrapPage> {
 
             const SizedBox(height: 16),
 
-            // Trip Date Field (with DatePicker)
+            // حقل تاريخ الرحلة (مع منتقي التاريخ)
             _buildCustomTextField(
               _tripDateController,
               'تاريخ الرحلة',
               'اختر تاريخ الرحلة',
               TextInputType.datetime,
-              readOnly: true, // Make it read-only as date is picked
-              onTap: () => _selectDate(context), // Open date picker on tap
+              readOnly: true,
+              onTap: () => _selectDate(context),
             ),
 
             const SizedBox(height: 16),
 
-            // Trip Price Field
-            _buildCustomTextField(
-              _tripPriceController,
-              'سعر الرحلة',
-              'مثلا 1500',
-              TextInputType.number,
-              inputFormatters: [
-                // Allow only numbers (integers or decimals)
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Trip Description Field
+            // حقل وصف الرحلة
             _buildCustomTextField(
               _tripDescriptionController,
               'وصف الرحلة',
               'أدخل تفاصيل إضافية عن الرحلة',
               TextInputType.multiline,
-              maxLines: 3, // Allow multiple lines for description
+              maxLines: 3,
             ),
             const SizedBox(height: 16),
 
-            // Trip Type Field
+            // حقل نوع الرحلة
             _buildCustomTextField(
               _tripTypeController,
               'نوع الرحلة',
@@ -280,7 +297,7 @@ class _AddTrapPageState extends State<AddTrapPage> {
             ),
             const SizedBox(height: 16),
 
-            // Trip Status Field
+            // حقل حالة الرحلة
             _buildCustomTextField(
               _tripStatusController,
               'حالة الرحلة',
@@ -289,43 +306,54 @@ class _AddTrapPageState extends State<AddTrapPage> {
             ),
             const SizedBox(height: 16),
 
-            // Trip Duration Field
+            // حقل ليالي المدينة
+            _buildCustomTextField(
+              _madinaNightsController,
+              'عدد ليالي المدينة',
+              'مثلا 2',
+              TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+            const SizedBox(height: 16),
+
+            // حقل ليالي مكة
+            _buildCustomTextField(
+              _makkahNightsController,
+              'عدد ليالي مكة',
+              'مثلا 2',
+              TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+            const SizedBox(height: 16),
+
+            // حقل مدة الرحلة (سيعرض مجموع الليالي المحسوب)
             _buildCustomTextField(
               _tripDurationController,
-              'مدة الرحلة (بالأيام)',
-              'مثلا 10',
+              'مدة الرحلة (بالأيام - مجموع الليالي)',
+              '${_totalNights}', // يعرض القيمة المحسوبة
               TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter
-                    .digitsOnly, // Allow only digits for duration
-              ],
+              readOnly: true, // يجعل هذا الحقل للقراءة فقط
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             ),
-            const SizedBox(height: 24), // More space before button
-            // Save Button
+            const SizedBox(height: 24),
+
+            // زر الحفظ
             ElevatedButton(
-              onPressed: _saveTripData, // Call the new save function
+              onPressed: _saveTripData,
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    Colors.deepPurple.shade400, // Attractive button color
-                padding: const EdgeInsets.symmetric(
-                  vertical: 15,
-                ), // Increased vertical padding
+                backgroundColor: Colors.deepPurple.shade400,
+                padding: const EdgeInsets.symmetric(vertical: 15),
                 textStyle: const TextStyle(
                   fontSize: 20,
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                ), // Larger, bold text
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    12,
-                  ), // Rounded button corners
                 ),
-                elevation: 5, // Add shadow for depth
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 5,
               ),
-              child: const Text(
-                'حفظ',
-                style: TextStyle(color: Colors.white),
-              ), // Ensure text color is white
+              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),

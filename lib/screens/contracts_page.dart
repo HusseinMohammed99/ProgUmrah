@@ -1,21 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // لاستخدام FilteringTextInputFormatter و rootBundle
-import 'package:pdf/widgets.dart' as pw; // فقط لاستخدام pw.Font هنا
-
-// استيراد ملف دالة إنشاء الـ PDF
-import 'package:umrah/utils/pdf_contract_generator.dart'; // تأكد من المسار الصحيح
+import 'package:pdf/pdf.dart'; // لاستخدام مكتبة PDF
+import 'package:pdf/widgets.dart' as pw; // اختصار pw لـ widgets الخاصة بالـ PDF
+import 'package:path_provider/path_provider.dart'; // لحفظ الملفات على الجهاز
+import 'dart:io'; // للتعامل مع الملفات
+import 'package:open_filex/open_filex.dart'; // لفتح الملفات
+import 'package:google_fonts/google_fonts.dart'; // لاستخدام خطوط جوجل في PDF (لتحسين دعم العربية)
+import 'package:supabase_flutter/supabase_flutter.dart'; // استيراد Supabase
 
 class ContractPage extends StatefulWidget {
-  // المعاملات لاستقبال الأسعار من صفحة CalacterPage
+  // المعاملات لاستقبال الأسعار من صفحة CalacterPage (للعقود الجديدة)
   final double pricePerPersonQuad;
   final double pricePerPersonTriple;
   final double pricePerPersonDouble;
+  final Map<String, dynamic> tripData; // بيانات الرحلة لربط العقد بها
+  final Map<String, dynamic>?
+  existingContractData; // بيانات العقد الحالي للتعديل
 
   const ContractPage({
     super.key,
     required this.pricePerPersonQuad,
     required this.pricePerPersonTriple,
-    required this.pricePerPersonDouble,
+    required this.pricePerPersonDouble, // تم التصحيح هنا
+    required this.tripData,
+    this.existingContractData, // يمكن أن يكون null عند إضافة عقد جديد
   });
 
   @override
@@ -44,6 +52,14 @@ class _ContractPageState extends State<ContractPage> {
       TextEditingController();
   int makkahQuadRoomsCalculated = 0; // لتخزين عدد الغرف الرباعية المحسوب
 
+  // NEW: متحكمات أسعار البرنامج القابلة للتحرير
+  final TextEditingController pricePerPersonQuadController =
+      TextEditingController();
+  final TextEditingController pricePerPersonTripleController =
+      TextEditingController();
+  final TextEditingController pricePerPersonDoubleController =
+      TextEditingController();
+
   // متغيرات نتائج العقد
   String warningMessage =
       ""; // للتحذيرات حول الأسرة الشاغرة أو المعتمرين غير المخصصين
@@ -67,6 +83,59 @@ class _ContractPageState extends State<ContractPage> {
   void initState() {
     super.initState();
     _arabicFontFuture = _loadArabicFont();
+
+    // تهيئة المتحكمات ببيانات العقد الموجودة أو القيم الافتراضية
+    if (widget.existingContractData != null) {
+      // تعديل عقد موجود: قم بملء الحقول ببيانات العقد الموجودة
+      agentNameController.text =
+          widget.existingContractData!['agent_name']?.toString() ?? '';
+      contractNumberController.text =
+          widget.existingContractData!['contract_number']?.toString() ?? '';
+      totalPilgrimsController.text =
+          widget.existingContractData!['total_pilgrims']?.toString() ?? '';
+      contractTermsController.text =
+          widget.existingContractData!['contract_terms']?.toString() ?? '';
+      madinahDoubleRoomsController.text =
+          widget.existingContractData!['madinah_double_rooms']?.toString() ??
+          '';
+      madinahTripleRoomsController.text =
+          widget.existingContractData!['madinah_triple_rooms']?.toString() ??
+          '';
+      makkahDoubleRoomsController.text =
+          widget.existingContractData!['makkah_double_rooms']?.toString() ?? '';
+      makkahTripleRoomsController.text =
+          widget.existingContractData!['makkah_triple_rooms']?.toString() ?? '';
+      selectedSignatory = widget.existingContractData!['company_signatory']
+          ?.toString();
+
+      // تحميل أسعار البرنامج الخاصة بالعقد الموجود
+      pricePerPersonQuadController.text =
+          (widget.existingContractData!['price_per_person_quad'] as double?)
+              ?.toStringAsFixed(2) ??
+          '0.00';
+      pricePerPersonTripleController.text =
+          (widget.existingContractData!['price_per_person_triple'] as double?)
+              ?.toStringAsFixed(2) ??
+          '0.00';
+      pricePerPersonDoubleController.text =
+          (widget.existingContractData!['price_per_person_double'] as double?)
+              ?.toStringAsFixed(2) ??
+          '0.00';
+
+      // أعد حساب العقد مباشرة لملء القيم المحسوبة (مثل الغرف الرباعية والتكاليف)
+      // تأخير بسيط لضمان تهيئة جميع المتحكمات
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        calculateContract();
+      });
+    } else {
+      // إنشاء عقد جديد: استخدم الأسعار الممررة كقيم افتراضية للبرنامج
+      pricePerPersonQuadController.text = widget.pricePerPersonQuad
+          .toStringAsFixed(2);
+      pricePerPersonTripleController.text = widget.pricePerPersonTriple
+          .toStringAsFixed(2);
+      pricePerPersonDoubleController.text = widget.pricePerPersonDouble
+          .toStringAsFixed(2);
+    }
   }
 
   Future<pw.Font> _loadArabicFont() async {
@@ -78,7 +147,6 @@ class _ContractPageState extends State<ContractPage> {
       ); // تأكد من المسار الصحيح للخط
       return pw.Font.ttf(fontData);
     } catch (e) {
-      // طباعة الخطأ فقط للتصحيح، لا تستخدم print في كود الإنتاج
       print("Error loading NotoSansArabic-Regular.ttf: $e");
       // Fallback to a default font if custom font fails
       return pw.Font.helvetica();
@@ -96,6 +164,9 @@ class _ContractPageState extends State<ContractPage> {
     madinahTripleRoomsController.dispose();
     makkahDoubleRoomsController.dispose();
     makkahTripleRoomsController.dispose();
+    pricePerPersonQuadController.dispose(); // NEW
+    pricePerPersonTripleController.dispose(); // NEW
+    pricePerPersonDoubleController.dispose(); // NEW
     super.dispose();
   }
 
@@ -106,6 +177,14 @@ class _ContractPageState extends State<ContractPage> {
       totalMadinahRooms = 0; // إعادة تعيين إجمالي الغرف
       totalMakkahRooms = 0; // إعادة تعيين إجمالي الغرف
     });
+
+    // ✅ استخدام القيم من المتحكمات الجديدة للأسعار
+    double currentPricePerPersonQuad =
+        double.tryParse(pricePerPersonQuadController.text) ?? 0.0;
+    double currentPricePerPersonTriple =
+        double.tryParse(pricePerPersonTripleController.text) ?? 0.0;
+    double currentPricePerPersonDouble =
+        double.tryParse(pricePerPersonDoubleController.text) ?? 0.0;
 
     int totalPilgrims = int.tryParse(totalPilgrimsController.text) ?? 0;
     if (totalPilgrims <= 0) {
@@ -195,21 +274,136 @@ class _ContractPageState extends State<ContractPage> {
         makkahDoubleRooms + makkahTripleRooms + makkahQuadRoomsCalculated;
 
     // --- حساب التكاليف الإجمالية ---
-    // التكلفة الإجمالية لغرف المدينة بناءً على التخصيص الفعلي
+    // التكلفة الإجمالية لغرف المدينة بناءً على التخصيص الفعلي والأسعار المحررة
     currentTotalMadinahCost =
-        (madinahQuadRoomsCalculated * widget.pricePerPersonQuad * 4) +
-        (madinahTripleRooms * widget.pricePerPersonTriple * 3) +
-        (madinahDoubleRooms * widget.pricePerPersonDouble * 2);
+        (madinahQuadRoomsCalculated * currentPricePerPersonQuad * 4) +
+        (madinahTripleRooms * currentPricePerPersonTriple * 3) +
+        (madinahDoubleRooms * currentPricePerPersonDouble * 2);
 
-    // التكلفة الإجمالية لغرف مكة بناءً على التخصيص الفعلي
+    // التكلفة الإجمالية لغرف مكة بناءً على التخصيص الفعلي والأسعار المحررة
     currentTotalMakkahCost =
-        (makkahQuadRoomsCalculated * widget.pricePerPersonQuad * 4) +
-        (makkahTripleRooms * widget.pricePerPersonTriple * 3) +
-        (makkahDoubleRooms * widget.pricePerPersonDouble * 2);
+        (makkahQuadRoomsCalculated * currentPricePerPersonQuad * 4) +
+        (makkahTripleRooms * currentPricePerPersonTriple * 3) +
+        (makkahDoubleRooms * currentPricePerPersonDouble * 2);
 
     // إجمالي قيمة العقد الكلي
     currentOverallContractTotal =
         currentTotalMadinahCost + currentTotalMakkahCost;
+  }
+
+  // ✅ دالة لحفظ أو تحديث بيانات العقد في Supabase
+  Future<void> _saveContractData() async {
+    final int? tripId = widget.tripData['id'] is int
+        ? widget.tripData['id'] as int
+        : (widget.tripData['id'] != null
+              ? int.tryParse(widget.tripData['id'].toString())
+              : null);
+
+    if (tripId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'خطأ: لا يوجد معرف رحلة صالح لربط العقد بها.',
+              textDirection: TextDirection.rtl,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // قم بإجراء الحسابات أولاً لضمان تحديث المجاميع قبل الحفظ
+    calculateContract();
+
+    final Map<String, dynamic> contractData = {
+      'trip_id': tripId,
+      'agent_name': agentNameController.text,
+      'contract_number': contractNumberController.text,
+      'total_pilgrims': int.tryParse(totalPilgrimsController.text) ?? 0,
+      'madinah_double_rooms':
+          int.tryParse(madinahDoubleRoomsController.text) ?? 0,
+      'madinah_triple_rooms':
+          int.tryParse(madinahTripleRoomsController.text) ?? 0,
+      'madinah_quad_rooms': madinahQuadRoomsCalculated, // محسوب
+      'makkah_double_rooms':
+          int.tryParse(makkahDoubleRoomsController.text) ?? 0,
+      'makkah_triple_rooms':
+          int.tryParse(makkahTripleRoomsController.text) ?? 0,
+      'makkah_quad_rooms': makkahQuadRoomsCalculated, // محسوب
+      'contract_terms': contractTermsController.text,
+      'total_madinah_cost': currentTotalMadinahCost,
+      'total_makkah_cost': currentTotalMakkahCost,
+      'overall_contract_total': currentOverallContractTotal,
+      'company_signatory': selectedSignatory ?? 'غير محدد',
+      // حفظ أسعار البرنامج القابلة للتحرير مع العقد
+      'price_per_person_quad':
+          double.tryParse(pricePerPersonQuadController.text) ?? 0.0,
+      'price_per_person_triple':
+          double.tryParse(pricePerPersonTripleController.text) ?? 0.0,
+      'price_per_person_double':
+          double.tryParse(pricePerPersonDoubleController.text) ?? 0.0,
+    };
+
+    try {
+      if (widget.existingContractData != null &&
+          widget.existingContractData!['id'] != null) {
+        // تحديث عقد موجود
+        await Supabase.instance.client
+            .from('contracts')
+            .update(contractData)
+            .eq('id', widget.existingContractData!['id']);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تم تحديث العقد بنجاح!',
+                textDirection: TextDirection.rtl,
+              ),
+            ),
+          );
+        }
+      } else {
+        // إدخال عقد جديد
+        await Supabase.instance.client.from('contracts').insert(contractData);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تم إضافة العقد بنجاح!',
+                textDirection: TextDirection.rtl,
+              ),
+            ),
+          );
+        }
+      }
+      // بعد الحفظ، العودة إلى TripOverviewPage
+      if (mounted) {
+        Navigator.pop(context); // العودة إلى TripOverviewPage
+      }
+    } on PostgrestException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطأ في حفظ/تحديث العقد: ${e.message}',
+              textDirection: TextDirection.rtl,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطأ غير متوقع عند حفظ/تحديث العقد: ${e.toString()}',
+              textDirection: TextDirection.rtl,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -227,7 +421,12 @@ class _ContractPageState extends State<ContractPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("إنشاء العقد", style: TextStyle(color: Colors.white)),
+        title: Text(
+          widget.existingContractData != null
+              ? "تعديل العقد"
+              : "إنشاء العقد", // تغيير العنوان بناءً على الحالة
+          style: const TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.indigo.shade700,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -238,14 +437,14 @@ class _ContractPageState extends State<ContractPage> {
           children: [
             // قسم بيانات الوكيل والعقد
             _buildSectionHeader("بيانات الوكيل والعقد"),
-            _buildCustomTextField(
+            buildCustomTextField(
               agentNameController,
               "اسم الوكيل",
               "مثال: وكيل السعادة",
               TextInputType.text,
             ),
             const SizedBox(height: 15),
-            _buildCustomTextField(
+            buildCustomTextField(
               contractNumberController,
               "رقم العقد",
               "مثال: UMRAH-2025-001",
@@ -255,7 +454,7 @@ class _ContractPageState extends State<ContractPage> {
 
             // مدخل العدد الإجمالي للمعتمرين
             _buildSectionHeader("العدد الإجمالي للمعتمرين"),
-            _buildCustomTextField(
+            buildCustomTextField(
               totalPilgrimsController,
               "العدد الإجمالي للمعتمرين",
               "مثال: 45",
@@ -263,16 +462,49 @@ class _ContractPageState extends State<ContractPage> {
             ),
             const SizedBox(height: 30),
 
+            // NEW: قسم أسعار البرنامج (قابلة للتحرير)
+            _buildSectionHeader("أسعار البرنامج (للفرد الواحد)"),
+            buildCustomTextField(
+              pricePerPersonQuadController,
+              "سعر الغرفة الرباعية",
+              "مثال: 500",
+              TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
+            ),
+            const SizedBox(height: 15),
+            buildCustomTextField(
+              pricePerPersonTripleController,
+              "سعر الغرفة الثلاثية",
+              "مثال: 600",
+              TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
+            ),
+            const SizedBox(height: 15),
+            buildCustomTextField(
+              pricePerPersonDoubleController,
+              "سعر الغرفة الثنائية",
+              "مثال: 750",
+              TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+              ],
+            ),
+            const SizedBox(height: 30),
+
             // أعداد غرف المدينة
             _buildSectionHeader("توزيع الغرف في المدينة"),
-            _buildCustomTextField(
+            buildCustomTextField(
               madinahDoubleRoomsController,
               "عدد الغرف الثنائية",
               "مثال: 2",
               TextInputType.number,
             ),
             const SizedBox(height: 15),
-            _buildCustomTextField(
+            buildCustomTextField(
               madinahTripleRoomsController,
               "عدد الغرف الثلاثية",
               "مثال: 3",
@@ -287,14 +519,14 @@ class _ContractPageState extends State<ContractPage> {
 
             // أعداد غرف مكة
             _buildSectionHeader("توزيع الغرف في مكة"),
-            _buildCustomTextField(
+            buildCustomTextField(
               makkahDoubleRoomsController,
               "عدد الغرف الثنائية",
               "مثال: 3",
               TextInputType.number,
             ),
             const SizedBox(height: 15),
-            _buildCustomTextField(
+            buildCustomTextField(
               makkahTripleRoomsController,
               "عدد الغرف الثلاثية",
               "مثال: 4",
@@ -309,7 +541,7 @@ class _ContractPageState extends State<ContractPage> {
 
             // مدخل شروط العقد
             _buildSectionHeader("الشروط والتفاصيل الإضافية"),
-            _buildCustomTextField(
+            buildCustomTextField(
               contractTermsController,
               "الشروط والتفاصيل",
               "أدخل هنا أي شروط أو تفاصيل إضافية للعقد",
@@ -384,10 +616,33 @@ class _ContractPageState extends State<ContractPage> {
             ),
             const SizedBox(height: 30),
 
-            // زر طباعة PDF (جديد)
+            // زر حفظ العقد (جديد)
             ElevatedButton(
-              onPressed: () => generatePdfContract(
-                // استدعاء الدالة من الملف المنفصل
+              onPressed: _saveContractData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo.shade600, // لون مختلف
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 5,
+              ),
+              child: Text(
+                widget.existingContractData != null
+                    ? "تحديث العقد"
+                    : "حفظ العقد", // تغيير النص بناءً على الحالة
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+
+            // زر طباعة PDF
+            ElevatedButton(
+              onPressed: () => _generatePdfContract(
                 agentName: agentNameController.text,
                 contractNumber: contractNumberController.text,
                 totalPilgrims: int.tryParse(totalPilgrimsController.text) ?? 0,
@@ -405,12 +660,13 @@ class _ContractPageState extends State<ContractPage> {
                 overallContractTotal: currentOverallContractTotal,
                 agentSignatory: agentNameController.text,
                 companySignatory: selectedSignatory ?? "غير محدد",
-                arabicFontFuture: _arabicFontFuture, // تمرير future الخط
-                context: context, // تمرير الـ context لـ ScaffoldMessenger
+                // استخدام قيم المتحكمات لأسعار البرنامج عند طباعة PDF
+                pricePerPersonQuad:
+                    double.tryParse(pricePerPersonQuadController.text) ?? 0.0,
+                pricePerPersonTriple:
+                    double.tryParse(pricePerPersonTripleController.text) ?? 0.0,
                 pricePerPersonDouble:
-                    widget.pricePerPersonDouble, // تمرير أسعار الغرف
-                pricePerPersonTriple: widget.pricePerPersonTriple,
-                pricePerPersonQuad: widget.pricePerPersonQuad,
+                    double.tryParse(pricePerPersonDoubleController.text) ?? 0.0,
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal.shade400, // لون مختلف لزر الطباعة
@@ -473,12 +729,13 @@ class _ContractPageState extends State<ContractPage> {
                 overallContractTotal: currentOverallContractTotal,
                 agentSignatory: agentNameController.text,
                 companySignatory: selectedSignatory ?? "غير محدد",
-                pricePerPersonDouble:
-                    widget.pricePerPersonDouble, // سعر الشخص في الغرفة الثنائية
-                pricePerPersonTriple:
-                    widget.pricePerPersonTriple, // سعر الشخص في الغرفة الثلاثية
+                // استخدام قيم المتحكمات لأسعار البرنامج عند بناء الصورة
                 pricePerPersonQuad:
-                    widget.pricePerPersonQuad, // سعر الشخص في الغرفة الرباعية
+                    double.tryParse(pricePerPersonQuadController.text) ?? 0.0,
+                pricePerPersonTriple:
+                    double.tryParse(pricePerPersonTripleController.text) ?? 0.0,
+                pricePerPersonDouble:
+                    double.tryParse(pricePerPersonDoubleController.text) ?? 0.0,
               ),
             const SizedBox(height: 30),
           ],
@@ -488,22 +745,20 @@ class _ContractPageState extends State<ContractPage> {
   }
 
   // دالة مساعدة لإنشاء حقول إدخال نصية مخصصة
-  Widget _buildCustomTextField(
+  Widget buildCustomTextField(
     TextEditingController controller,
     String labelText,
     String hintText,
     TextInputType keyboardType, {
-    int maxLines = 1,
+    int maxLines = 1, // المعامل الجديد: يسمح بتحديد عدد الأسطر الأقصى
+    List<TextInputFormatter>? inputFormatters, // لإضافة inputFormatters
   }) {
     return TextField(
       controller: controller,
       textDirection: TextDirection.rtl,
       keyboardType: keyboardType,
-      maxLines: maxLines,
-      inputFormatters: <TextInputFormatter>[
-        if (keyboardType == TextInputType.number)
-          FilteringTextInputFormatter.digitsOnly,
-      ],
+      maxLines: maxLines, // تطبيق عدد الأسطر الأقصى
+      inputFormatters: inputFormatters, // تطبيق inputFormatters
       style: TextStyle(fontSize: 18, color: Colors.blueGrey.shade900),
       decoration: InputDecoration(
         labelText: labelText,
@@ -599,10 +854,12 @@ class _ContractPageState extends State<ContractPage> {
     required double overallContractTotal,
     required String agentSignatory,
     required String companySignatory,
-    required double pricePerPersonDouble, // إضافة سعر الغرفة الثنائية
-    required double pricePerPersonTriple, // إضافة سعر الغرفة الثلاثية
-    required double pricePerPersonQuad, // إضافة سعر الغرفة الرباعية
+    required double pricePerPersonQuad, // NEW: Passed editable prices
+    required double pricePerPersonTriple, // NEW
+    required double pricePerPersonDouble, // NEW
   }) {
+    // تحتاج إلى ضبط هذه الأحجام والمواضع بناءً على قالب صورتك الفعلية
+    // هذا يفترض صورة بنسبة تقريبية لـ A4 (مثل 600 عرض × 800 ارتفاع)
     const double imageHeight = 800; // ارتفاع مثال لعرض الصورة
     const double imageWidth = 600; // عرض مثال
 
@@ -614,9 +871,7 @@ class _ContractPageState extends State<ContractPage> {
           border: Border.all(color: Colors.grey, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withAlpha(
-                25,
-              ), // استخدام withAlpha لتجنب deprecated
+              color: Colors.black.withOpacity(0.1),
               spreadRadius: 2,
               blurRadius: 5,
               offset: const Offset(0, 3),
@@ -628,12 +883,12 @@ class _ContractPageState extends State<ContractPage> {
             // صورة الخلفية (قالب العقد الخاص بك)
             Positioned.fill(
               child: Image.asset(
-                'assets/images/Form.jpg', // تأكد من وجود الصورة بهذا المسار في assets/images وتحديث pubspec.yaml
+                'assets/images/contract_template.jpg', // تم تحديث المسار ليتوافق مع الصورة الجديدة (JPG)
                 fit: BoxFit.fill, // ملء الحاوية
                 errorBuilder: (context, error, stackTrace) {
                   return Center(
                     child: Text(
-                      'خطأ في تحميل الصورة: تأكد من إضافة Form.jpg في assets/images وتحديث pubspec.yaml',
+                      'خطأ في تحميل الصورة: تأكد من إضافة contract_template.jpg في assets/images وتحديث pubspec.yaml',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.red, fontSize: 14),
                     ),
@@ -645,11 +900,11 @@ class _ContractPageState extends State<ContractPage> {
             // رقم العقد (في الصورة هو في الزاوية العلوية اليمنى)
             Positioned(
               top: 155, // تم التعديل ليتوافق مع الصورة الجديدة
-              right: 5, // تم التعديل
+              right: 180, // تم التعديل
               child: SizedBox(
                 width: 150,
                 child: Text(
-                  "رقم العقد: $contractNumber",
+                  contractNumber.isNotEmpty ? contractNumber : "غير محدد",
                   textDirection: TextDirection.ltr,
                   style: const TextStyle(
                     fontSize: 14,
@@ -662,7 +917,7 @@ class _ContractPageState extends State<ContractPage> {
             // تاريخ العقد (إضافة تاريخ اليوم)
             Positioned(
               top: 180, // تقريبي، بالقرب من رقم العقد
-              right: 10,
+              right: 200,
               child: Text(
                 // يمكنك تنسيق التاريخ حسب الحاجة
                 'التاريخ: ${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().year}',
@@ -674,11 +929,11 @@ class _ContractPageState extends State<ContractPage> {
             // اسم الوكيل (الطرف الأول في العقد)
             Positioned(
               top: 205, // تم التعديل
-              right: 10, // تم التعديل
+              right: 210, // تم التعديل
               child: SizedBox(
                 width: 250,
                 child: Text(
-                  "اسم الوكيل: $agentName",
+                  agentName.isNotEmpty ? agentName : "غير محدد",
                   textDirection: TextDirection.rtl,
                   style: const TextStyle(
                     fontSize: 14,
@@ -691,41 +946,24 @@ class _ContractPageState extends State<ContractPage> {
             // العدد الإجمالي للمعتمرين وعدد الليالي (هذا الجزء نص مدمج في الصورة القديمة، لكننا سنضع قيمنا)
             Positioned(
               top: 230, // موضع تقريبي
-              right: 10, // موضع تقريبي
+              right: 170, // موضع تقريبي
               child: SizedBox(
-                width: 600,
+                width: 350,
                 child: Text(
-                  // حساب عدد الليالي بناءً على عدد الغرف وتكلفة الشخص
-                  // هذا تبسيط وقد لا يعكس بدقة عدد الليالي الفعلي للحزمة
-                  'تم الاتفاق بين شركة المدينة المنورة العالمية الفوض لابرام القود السيد : $companySignatory , والسيد : $agentName على تنظيم برنامج عمرة لعدد ${totalPilgrims} معتمرين.', // تحديث النص ليعكس المتغيرات بشكل أفضل
+                  'إجمالي ${totalMadinahRooms + totalMakkahRooms} ليلة، وعدد المعتمرين ${totalPilgrims}', // دمج عدد الليالي مع عدد المعتمرين
                   textDirection: TextDirection.rtl,
                   style: const TextStyle(fontSize: 14, color: Colors.black87),
-                  maxLines: 4,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ),
-            // شروط العقد (موضع افتراضي - قم بضبطه)
-            Positioned(
-              top: 590, // تم التعديل ليتناسب مع الصورة
-              right: 80, // تم التعديل
-              left: 80, // تم التعديل
-              child: Text(
-                contractTerms.isNotEmpty
-                    ? contractTerms
-                    : "لا يوجد شروط إضافية.",
-                textDirection: TextDirection.rtl,
-                style: const TextStyle(fontSize: 12),
-                maxLines: 5, // تقليل عدد الأسطر لتناسب المساحة
-                overflow: TextOverflow.ellipsis,
               ),
             ),
 
             // --- جدول التفاصيل (تخطيط مخصص) ---
             // بناء جدول يدويا باستخدام Column و Row لوضعه بدقة
             Positioned(
-              top: 300, // تم التعديل ليتوافق مع بداية الجدول في الصورة
-              right: 50, // تم التعديل
+              top: 360, // تم التعديل ليتوافق مع بداية الجدول في الصورة
+              right: 75, // تم التعديل
               left: 75, // تم التعديل
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -802,7 +1040,7 @@ class _ContractPageState extends State<ContractPage> {
                     ),
                   ),
                   _buildContractTableRow(
-                    "رباعي",
+                    "غرف رباعية",
                     "",
                     makkahQuad.toString(),
                     pricePerPersonQuad.toStringAsFixed(0),
@@ -830,6 +1068,22 @@ class _ContractPageState extends State<ContractPage> {
                     isTotalRow: true,
                   ),
                 ],
+              ),
+            ),
+
+            // شروط العقد (موضع افتراضي - قم بضبطه)
+            Positioned(
+              top: 590, // تم التعديل ليتناسب مع الصورة
+              right: 80, // تم التعديل
+              left: 80, // تم التعديل
+              child: Text(
+                contractTerms.isNotEmpty
+                    ? contractTerms
+                    : "لا يوجد شروط إضافية.",
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontSize: 12),
+                maxLines: 5, // تقليل عدد الأسطر لتناسب المساحة
+                overflow: TextOverflow.ellipsis,
               ),
             ),
 
@@ -975,5 +1229,423 @@ class _ContractPageState extends State<ContractPage> {
         ],
       ),
     );
+  }
+
+  // دالة مساعدة لإنشاء حقول إدخال نصية مخصصة
+  // Widget buildCustomTextField(
+  //   TextEditingController controller,
+  //   String labelText,
+  //   String hintText,
+  //   TextInputType keyboardType, {
+  //   int maxLines = 1,
+  //   List<TextInputFormatter>? inputFormatters,
+  // }) {
+  //   return TextField(
+  //     controller: controller,
+  //     textDirection: TextDirection.rtl,
+  //     keyboardType: keyboardType,
+  //     maxLines: maxLines,
+  //     inputFormatters: inputFormatters,
+  //     style: TextStyle(fontSize: 18, color: Colors.blueGrey.shade900),
+  //     decoration: InputDecoration(
+  //       labelText: labelText,
+  //       labelStyle: TextStyle(fontSize: 16, color: Colors.blueGrey.shade600),
+  //       hintText: hintText,
+  //       hintStyle: TextStyle(color: Colors.blueGrey.shade300, fontSize: 14),
+  //       hintTextDirection: TextDirection.rtl,
+  //       filled: true,
+  //       fillColor: Colors.white,
+  //       border: OutlineInputBorder(
+  //         borderRadius: BorderRadius.circular(10),
+  //         borderSide: BorderSide.none,
+  //       ),
+  //       enabledBorder: OutlineInputBorder(
+  //         borderRadius: BorderRadius.circular(10),
+  //         borderSide: BorderSide(color: Colors.blue.shade200, width: 1.5),
+  //       ),
+  //       focusedBorder: OutlineInputBorder(
+  //         borderRadius: BorderRadius.circular(10),
+  //         borderSide: BorderSide(color: Colors.deepPurple.shade300, width: 2),
+  //       ),
+  //       contentPadding: const EdgeInsets.symmetric(
+  //         horizontal: 15,
+  //         vertical: 12,
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  // // دالة مساعدة لعرض أعداد الغرف المحسوبة (في جزء الإدخال)
+  // Widget _buildCalculatedRoomDisplay(String label, int count) {
+  //   return Container(
+  //     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+  //     decoration: BoxDecoration(
+  //       color: Colors.grey.shade100,
+  //       borderRadius: BorderRadius.circular(10),
+  //       border: Border.all(color: Colors.blue.shade100, width: 1.5),
+  //     ),
+  //     child: Row(
+  //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //       children: [
+  //         Text(
+  //           label,
+  //           textDirection: TextDirection.rtl,
+  //           style: TextStyle(fontSize: 18, color: Colors.blueGrey.shade600),
+  //         ),
+  //         Text(
+  //           count.toString(),
+  //           textDirection: TextDirection.ltr,
+  //           style: TextStyle(
+  //             fontSize: 18,
+  //             fontWeight: FontWeight.bold,
+  //             color: Colors.blueGrey.shade900,
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+  // // دالة مساعدة لإنشاء عناوين الأقسام (في جزء الإدخال)
+  // Widget _buildSectionHeader(String title) {
+  //   return Padding(
+  //     padding: const EdgeInsets.symmetric(vertical: 15.0),
+  //     child: Text(
+  //       title,
+  //       textDirection: TextDirection.rtl,
+  //       style: TextStyle(
+  //         fontSize: 22,
+  //         fontWeight: FontWeight.bold,
+  //         color: Colors.blueGrey.shade700,
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  // // --- دالة لإنشاء مستند PDF من بيانات العقد ---
+  Future<void> _generatePdfContract({
+    required String agentName,
+    required String contractNumber,
+    required int totalPilgrims,
+    required int madinahDouble,
+    required int madinahTriple,
+    required int madinahQuad,
+    required int makkahDouble,
+    required int makkahTriple,
+    required int makkahQuad,
+    required int totalMadinahRooms,
+    required int totalMakkahRooms,
+    required String contractTerms,
+    required double totalMadinahCost,
+    required double totalMakkahCost,
+    required double overallContractTotal,
+    required String agentSignatory,
+    required String companySignatory,
+    required double pricePerPersonQuad, // NEW: Passed editable prices
+    required double pricePerPersonTriple, // NEW
+    required double pricePerPersonDouble, // NEW
+  }) async {
+    final pdf = pw.Document();
+    final pw.Font arabicFont = await _arabicFontFuture; // تحميل الخط العربي
+
+    // تحميل صورة الخلفية
+    final ByteData bytes = await rootBundle.load(
+      'assets/images/contract_template.jpg',
+    ); // تحديث المسار لـ JPG
+    final Uint8List byteList = bytes.buffer.asUint8List();
+    final pw.MemoryImage contractImage = pw.MemoryImage(byteList);
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Stack(
+            children: [
+              // صورة الخلفية كأول عنصر في الـ Stack
+              pw.Image(contractImage, fit: pw.BoxFit.fill),
+
+              // رقم العقد (في الصورة هو في الزاوية العلوية اليمنى)
+              pw.Positioned(
+                top: 70, // تم التعديل ليتناسب مع قالب الـ PDF
+                right: 90, // تم التعديل
+                child: pw.SizedBox(
+                  width: 150,
+                  child: pw.Text(
+                    contractNumber.isNotEmpty ? contractNumber : "غير محدد",
+                    textDirection: pw.TextDirection.ltr, // رقم العقد LTR
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      font: arabicFont,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              // اسم الوكيل (الطرف الأول في العقد)
+              pw.Positioned(
+                top: 100, // تم التعديل
+                right: 120, // تم التعديل
+                child: pw.SizedBox(
+                  width: 200,
+                  child: pw.Text(
+                    agentName.isNotEmpty ? agentName : "غير محدد",
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      font: arabicFont,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              // تفاصيل عدد الليالي والمعتمرين
+              pw.Positioned(
+                top: 130, // تم التعديل
+                right: 120, // تم التعديل
+                child: pw.SizedBox(
+                  width: 300,
+                  child: pw.Text(
+                    'إجمالي ${totalMadinahRooms + totalMakkahRooms} ليلة، وعدد المعتمرين ${totalPilgrims}',
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(fontSize: 10, font: arabicFont),
+                    maxLines: 2,
+                  ),
+                ),
+              ),
+
+              // --- جدول التفاصيل في PDF ---
+              pw.Positioned(
+                top:
+                    250, // اضبط هذا ليتوافق مع بداية منطقة الجدول في قالب الـ PDF
+                right: 70, // هام لضبط عرض الجدول
+                left: 70, // هام لضبط عرض الجدول
+                child: pw.Table.fromTextArray(
+                  headers: [
+                    'التفاصيل',
+                    'المدينة',
+                    'مكة',
+                    'السعر/شخص',
+                    'الإجمالي',
+                  ],
+                  data: [
+                    ['العدد الإجمالي للمعتمرين', '$totalPilgrims', '', '', ''],
+                    ['غرف المدينة:', '', '', '', ''], // صف عنوان فرعي
+                    [
+                      'ثنائي',
+                      madinahDouble.toString(),
+                      '',
+                      pricePerPersonDouble.toStringAsFixed(0),
+                      (madinahDouble * pricePerPersonDouble * 2)
+                          .toStringAsFixed(0),
+                    ],
+                    [
+                      'ثلاثي',
+                      madinahTriple.toString(),
+                      '',
+                      pricePerPersonTriple.toStringAsFixed(0),
+                      (madinahTriple * pricePerPersonTriple * 3)
+                          .toStringAsFixed(0),
+                    ],
+                    [
+                      'رباعي',
+                      madinahQuad.toString(),
+                      '',
+                      pricePerPersonQuad.toStringAsFixed(0),
+                      (madinahQuad * pricePerPersonQuad * 4).toStringAsFixed(0),
+                    ],
+                    [
+                      'إجمالي غرف المدينة',
+                      totalMadinahRooms.toString(),
+                      '',
+                      '',
+                      totalMadinahCost.toStringAsFixed(0),
+                    ],
+                    ['غرف مكة:', '', '', '', ''], // صف عنوان فرعي
+                    [
+                      'ثنائي',
+                      '',
+                      makkahDouble.toString(),
+                      pricePerPersonDouble.toStringAsFixed(0),
+                      (makkahDouble * pricePerPersonDouble * 2).toStringAsFixed(
+                        0,
+                      ),
+                    ],
+                    [
+                      'ثلاثي',
+                      '',
+                      makkahTriple.toString(),
+                      pricePerPersonTriple.toStringAsFixed(0),
+                      (makkahTriple * pricePerPersonTriple * 3).toStringAsFixed(
+                        0,
+                      ),
+                    ],
+                    [
+                      'رباعي',
+                      '',
+                      makkahQuad.toString(),
+                      pricePerPersonQuad.toStringAsFixed(0),
+                      (makkahQuad * pricePerPersonQuad * 4).toStringAsFixed(0),
+                    ],
+                    [
+                      'إجمالي غرف مكة',
+                      '',
+                      totalMakkahRooms.toString(),
+                      '',
+                      totalMakkahCost.toStringAsFixed(0),
+                    ],
+                    [
+                      'الإجمالي الكلي للعقد',
+                      '',
+                      '',
+                      '',
+                      overallContractTotal.toStringAsFixed(0),
+                    ],
+                  ],
+                  cellAlignment: pw.Alignment.center, // محاذاة الخلايا
+                  headerStyle: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 10,
+                    font: arabicFont,
+                  ),
+                  cellStyle: pw.TextStyle(fontSize: 9, font: arabicFont),
+                  columnWidths: {
+                    // ضبط عرض الأعمدة
+                    0: const pw.FlexColumnWidth(3), // التفاصيل
+                    1: const pw.FlexColumnWidth(1.5), // المدينة
+                    2: const pw.FlexColumnWidth(1.5), // مكة
+                    3: const pw.FlexColumnWidth(2), // السعر/شخص
+                    4: const pw.FlexColumnWidth(2), // الإجمالي
+                  },
+                  border: pw.TableBorder.all(
+                    color: PdfColors.black,
+                    width: 0.5,
+                  ),
+                  headerDecoration: const pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                  ),
+                  cellPadding: const pw.EdgeInsets.all(3),
+                ),
+              ),
+
+              // شروط العقد
+              pw.Positioned(
+                top: 550, // اضبط هذا ليتناسب مع قسم الشروط في قالب الـ PDF
+                right: 50,
+                left: 50,
+                child: pw.Text(
+                  contractTerms.isNotEmpty
+                      ? contractTerms
+                      : "لا توجد شروط إضافية.",
+                  textDirection: pw.TextDirection.rtl,
+                  style: pw.TextStyle(fontSize: 10, font: arabicFont),
+                ),
+              ),
+
+              // قسم التوقيعات (موضع افتراضي)
+              // توقيع الوكيل
+              pw.Positioned(
+                bottom: 50, // اضبط هذا
+                right: 80, // اضبط هذا
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      "توقيع الوكيل:",
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        font: arabicFont,
+                      ),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      "____________________", // خط التوقيع
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey700,
+                        font: arabicFont,
+                      ),
+                    ),
+                    pw.Text(
+                      agentSignatory.isNotEmpty ? agentSignatory : "غير محدد",
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        font: arabicFont,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // توقيع موظف الشركة
+              pw.Positioned(
+                bottom: 50, // اضبط هذا
+                left: 80, // اضبط هذا
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      "توقيع موظف الشركة:",
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        font: arabicFont,
+                      ),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      "____________________", // خط التوقيع
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey700,
+                        font: arabicFont,
+                      ),
+                    ),
+                    pw.Text(
+                      companySignatory,
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        font: arabicFont,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // --- حفظ وفتح ملف الـ PDF ---
+    try {
+      final String dir = (await getApplicationDocumentsDirectory()).path;
+      final String path =
+          '$dir/umrah_contract_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final File file = File(path);
+      await file.writeAsBytes(await pdf.save());
+      OpenFilex.open(path);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'تم إنشاء ملف PDF بنجاح في: $path',
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'خطأ في إنشاء أو حفظ ملف PDF: $e',
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      );
+    }
   }
 }

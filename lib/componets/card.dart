@@ -8,6 +8,8 @@ class CardWiget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final int tripid = tripData['id'] ?? 'لا يوجد ';
+
     // استخراج البيانات من الـ Map مع توفير قيم افتراضية
     final String tripName = tripData['trip_name'] ?? 'لا يوجد اسم';
     final String tripDate = tripData['trip_date'] ?? 'لا يوجد تاريخ';
@@ -48,7 +50,7 @@ class CardWiget extends StatelessWidget {
                   color: Colors.red,
                   child: Text(
                     textAlign: TextAlign.center,
-                    " الرحلة : 1",
+                    " الرحلة : $tripid",
                   ), // هذا النص ثابت حاليا
                 ),
               ),

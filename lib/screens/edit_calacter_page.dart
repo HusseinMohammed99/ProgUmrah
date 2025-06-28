@@ -3,23 +3,28 @@ import 'package:flutter/services.dart'; // Required for TextInputFormatter
 import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
 import 'package:umrah/screens/contracts_page.dart'; // استيراد صفحة العقود
 
-class CalacterPage extends StatefulWidget {
-  // تم تصحيح طريقة تعريف واستقبال tripData
+class EditCalacterPage extends StatefulWidget {
+  // هذه الصفحة مصممة خصيصًا لتعديل العقود، لذا يجب أن يكون existingContractData موجودًا دائمًا.
+  // تم جعل existingContractData غير قابل للقيمة الفارغة (non-nullable) هنا لفرض ذلك.
   final Map<String, dynamic> tripData;
-  final Map<String, dynamic>?
-  existingContractData; // بيانات العقد الحالي للتعديل
+  final Map<String, dynamic>
+  existingContractData; // بيانات العقد الحالي للتعديل (غير قابلة للقيمة الفارغة)
 
-  const CalacterPage({
+  const EditCalacterPage({
     super.key,
     required this.tripData,
-    this.existingContractData, // يمكن أن يكون null عند إضافة عقد جديد
+    required this.existingContractData,
+    required double pricePerPersonQuad,
+    required double pricePerPersonTriple,
+    required double
+    pricePerPersonDouble, // يجب أن يتم تمرير بيانات عقد موجود دائمًا
   });
 
   @override
-  State<CalacterPage> createState() => _CalacterPageState();
+  State<EditCalacterPage> createState() => _EditCalacterPageState();
 }
 
-class _CalacterPageState extends State<CalacterPage> {
+class _EditCalacterPageState extends State<EditCalacterPage> {
   // Input fields for Saudi Riyals (SAR)
   final TextEditingController numr1 =
       TextEditingController(); // Visa price (SAR)
@@ -46,10 +51,10 @@ class _CalacterPageState extends State<CalacterPage> {
   // Custom occupancy input (t) - kept for potential future use or total passengers if different from room occupancy
   final TextEditingController t = TextEditingController();
 
-  // NEW: Custom room occupancy input for MADINAH (e.g., 3.5 people per room)
+  // Custom room occupancy input for MADINAH (e.g., 3.5 people per room)
   final TextEditingController madinahRoomOccupancyController =
       TextEditingController();
-  // NEW: Custom room occupancy input for MAKKAH (e.g., 2.0 people per room)
+  // Custom room occupancy input for MAKKAH (e.g., 2.0 people per room)
   final TextEditingController makkahRoomOccupancyController =
       TextEditingController();
 
@@ -77,132 +82,127 @@ class _CalacterPageState extends State<CalacterPage> {
     numd4.dispose();
     numd5.dispose();
     t.dispose();
-    madinahRoomOccupancyController
-        .dispose(); // Dispose the new Madinah controller
-    makkahRoomOccupancyController
-        .dispose(); // Dispose the new Makkah controller
+    madinahRoomOccupancyController.dispose();
+    makkahRoomOccupancyController.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
-    if (widget.existingContractData != null) {
-      print(
-        "[CalacterPage] Received existing contract data: ${widget.existingContractData}",
-      );
-      _loadExistingContractData();
-    } else {
-      print(
-        "[CalacterPage] No existing contract data received. Starting new contract.",
-      );
-      // Initialize with default values if it's a new contract
-      resultQuad = "0";
-      resultTriple = "0";
-      resultDouble = "0";
-      madinahRoomOccupancyController.text = '1.0';
-      makkahRoomOccupancyController.text = '1.0';
-    }
+    // بما أن هذه الصفحة مخصصة للتعديل، existingContractData سيكون موجودًا دائمًا.
+    print(
+      "[EditCalacterPage] Received existing contract data: ${widget.existingContractData}",
+    );
+    _loadExistingContractData();
   }
 
   // Function to load existing contract data into controllers
   void _loadExistingContractData() {
-    final Map<String, dynamic> data = widget.existingContractData!;
+    final Map<String, dynamic> data =
+        widget.existingContractData; // لا داعي لـ ! هنا
 
-    numr1.text = (data['visa_price_sar'] as int?)?.toStringAsFixed(2) ?? '';
-    print("[CalacterPage] Loaded numr1 (Visa Price SAR): ${numr1.text}");
+    print(
+      "[EditCalacterPage] Raw existing contract data for loading: $data",
+    ); // طباعة البيانات الخام
 
-    numr2.text =
-        (data['madinah_nights_input'] as int?)?.toStringAsFixed(0) ?? '';
-    print("[CalacterPage] Loaded numr2 (Madinah Nights): ${numr2.text}");
+    // تحميل البيانات من العقد الموجود إلى المتحكمات
+    // استخدام .toString() مباشرة لتحويل أي نوع بيانات رقمي إلى نص
+    // استخدام (data['key'] as num?)?.toString() للتعامل مع int/double
+    numr1.text = (data['visa_price_sar'] as num?)?.toString() ?? '';
+    print("[EditCalacterPage] Loaded numr1 (Visa Price SAR): ${numr1.text}");
+
+    numr2.text = (data['madinah_nights_input'] as num?)?.toString() ?? '';
+    print("[EditCalacterPage] Loaded numr2 (Madinah Nights): ${numr2.text}");
 
     numr3.text =
-        (data['madinah_price_per_night_sar'] as int?)?.toStringAsFixed(2) ?? '';
+        (data['madinah_price_per_night_sar'] as num?)?.toString() ?? '';
     print(
-      "[CalacterPage] Loaded numr3 (Madinah Price/Night SAR): ${numr3.text}",
+      "[EditCalacterPage] Loaded numr3 (Madinah Price/Night SAR): ${numr3.text}",
     );
 
-    numr4.text =
-        (data['makkah_price_per_night_sar'] as int?)?.toStringAsFixed(2) ?? '';
+    numr4.text = (data['makkah_price_per_night_sar'] as num?)?.toString() ?? '';
     print(
-      "[CalacterPage] Loaded numr4 (Makkah Price/Night SAR): ${numr4.text}",
+      "[EditCalacterPage] Loaded numr4 (Makkah Price/Night SAR): ${numr4.text}",
     );
 
-    numr5.text =
-        (data['makkah_nights_input'] as int?)?.toStringAsFixed(0) ?? '';
-    print("[CalacterPage] Loaded numr5 (Makkah Nights): ${numr5.text}");
+    numr5.text = (data['makkah_nights_input'] as num?)?.toString() ?? '';
+    print("[EditCalacterPage] Loaded numr5 (Makkah Nights): ${numr5.text}");
 
-    numd1.text = (data['transportation_usd'] as int?)?.toStringAsFixed(2) ?? '';
-    print("[CalacterPage] Loaded numd1 (Transportation USD): ${numd1.text}");
-
-    numd2.text = (data['authority_fees_usd'] as int?)?.toStringAsFixed(2) ?? '';
-    print("[CalacterPage] Loaded numd2 (Authority Fees USD): ${numd2.text}");
-
-    numd3.text = (data['gifts_usd'] as int?)?.toStringAsFixed(2) ?? '';
-    print("[CalacterPage] Loaded numd3 (Gifts USD): ${numd3.text}");
-
-    numd4.text =
-        (data['company_commission1_usd'] as int?)?.toStringAsFixed(2) ?? '';
+    numd1.text = (data['transportation_usd'] as num?)?.toString() ?? '';
     print(
-      "[CalacterPage] Loaded numd4 (Company Commission 1 USD): ${numd4.text}",
+      "[EditCalacterPage] Loaded numd1 (Transportation USD): ${numd1.text}",
     );
 
-    numd5.text =
-        (data['company_commission2_usd'] as int?)?.toStringAsFixed(2) ?? '';
+    numd2.text = (data['authority_fees_usd'] as num?)?.toString() ?? '';
     print(
-      "[CalacterPage] Loaded numd5 (Company Commission 2 USD): ${numd5.text}",
+      "[EditCalacterPage] Loaded numd2 (Authority Fees USD): ${numd2.text}",
     );
 
-    t.text =
-        (data['total_pilgrims'] as int?)?.toString() ??
-        ''; // Populate total pilgrims if exists
-    print("[CalacterPage] Loaded t (Total Pilgrims): ${t.text}");
+    numd3.text = (data['gifts_usd'] as num?)?.toString() ?? '';
+    print("[EditCalacterPage] Loaded numd3 (Gifts USD): ${numd3.text}");
+
+    numd4.text = (data['company_commission1_usd'] as num?)?.toString() ?? '';
+    print(
+      "[EditCalacterPage] Loaded numd4 (Company Commission 1 USD): ${numd4.text}",
+    );
+
+    numd5.text = (data['company_commission2_usd'] as num?)?.toString() ?? '';
+    print(
+      "[EditCalacterPage] Loaded numd5 (Company Commission 2 USD): ${numd5.text}",
+    );
+
+    t.text = (data['total_pilgrims'] as num?)?.toString() ?? '';
+    print("[EditCalacterPage] Loaded t (Total Pilgrims): ${t.text}");
 
     madinahRoomOccupancyController.text =
-        (data['madinah_room_occupancy_factor'] as int?)?.toStringAsFixed(1) ??
-        '1.0';
+        (data['madinah_room_occupancy_factor'] as num?)?.toString() ?? '1.0';
     print(
-      "[CalacterPage] Loaded madinahRoomOccupancyController: ${madinahRoomOccupancyController.text}",
+      "[EditCalacterPage] Loaded madinahRoomOccupancyController: ${madinahRoomOccupancyController.text}",
     );
 
     makkahRoomOccupancyController.text =
-        (data['makkah_room_occupancy_factor'] as int?)?.toStringAsFixed(1) ??
-        '1.0';
+        (data['makkah_room_occupancy_factor'] as num?)?.toString() ?? '1.0';
     print(
-      "[CalacterPage] Loaded makkahRoomOccupancyController: ${makkahRoomOccupancyController.text}",
+      "[EditCalacterPage] Loaded makkahRoomOccupancyController: ${makkahRoomOccupancyController.text}",
     );
 
-    // Populate calculated prices if they exist in the contract
+    // تحميل الأسعار المحسوبة من العقد الموجود
     pricePerPersonQuad = (data['price_per_person_quad'] as double?) ?? 0.0;
     pricePerPersonTriple = (data['price_per_person_triple'] as double?) ?? 0.0;
     pricePerPersonDouble = (data['price_per_person_double'] as double?) ?? 0.0;
     print(
-      "[CalacterPage] Loaded pricePerPersonQuad from DB: $pricePerPersonQuad",
+      "[EditCalacterPage] Loaded pricePerPersonQuad from DB: $pricePerPersonQuad",
     );
     print(
-      "[CalacterPage] Loaded pricePerPersonTriple from DB: $pricePerPersonTriple",
+      "[EditCalacterPage] Loaded pricePerPersonTriple from DB: $pricePerPersonTriple",
     );
     print(
-      "[CalacterPage] Loaded pricePerPersonDouble from DB: $pricePerPersonDouble",
+      "[EditCalacterPage] Loaded pricePerPersonDouble from DB: $pricePerPersonDouble",
     );
 
-    // Fix: Update result strings for the UI
+    // تحديث متغيرات النتائج لعرضها في الواجهة
     resultQuad = pricePerPersonQuad.round().toString();
     resultTriple = pricePerPersonTriple.round().toString();
     resultDouble = pricePerPersonDouble.round().toString();
-    print("[CalacterPage] Initial UI resultQuad (from DB): $resultQuad");
-    print("[CalacterPage] Initial UI resultTriple (from DB): $resultTriple");
-    print("[CalacterPage] Initial UI resultDouble (from DB): $resultDouble");
+    print(
+      "[EditCalacterPage] Initial UI resultQuad (from DB, pre-SumR): $resultQuad",
+    );
+    print(
+      "[EditCalacterPage] Initial UI resultTriple (from DB, pre-SumR): $resultTriple",
+    );
+    print(
+      "[EditCalacterPage] Initial UI resultDouble (from DB, pre-SumR): $resultDouble",
+    );
 
-    // Recalculate to ensure all internal variables are up-to-date
-    // هذا الاستدعاء لـ SumR سيقوم بتحديث الـ state وبالتالي الواجهة.
-    // ✅ NEW: Wrap SumR() in addPostFrameCallback to ensure controllers are fully updated
+    // تأخير استدعاء SumR() لضمان تحديث جميع المتحكمات أولاً
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      print("[EditCalacterPage] Calling SumR after controllers updated.");
       SumR();
     });
   }
 
-  // Function to clear all input fields and reset results
+  // Function to clear all input fields and reset results (مع الاحتفاظ بعامل الإشغال الافتراضي)
   void _clearAllFields() {
     setState(() {
       numr1.clear();
@@ -216,9 +216,9 @@ class _CalacterPageState extends State<CalacterPage> {
       numd4.clear();
       numd5.clear();
       t.clear();
-      madinahRoomOccupancyController.text = '1.0'; // Reset to default
-      makkahRoomOccupancyController.text = '1.0'; // Reset to default
-      resultQuad = "0"; // Reset to "0" instead of empty string for better UX
+      madinahRoomOccupancyController.text = '1.0'; // إعادة تعيين لافتراضي
+      makkahRoomOccupancyController.text = '1.0'; // إعادة تعيين لافتراضي
+      resultQuad = "0";
       resultTriple = "0";
       resultDouble = "0";
       pricePerPersonQuad = 0.0;
@@ -229,19 +229,17 @@ class _CalacterPageState extends State<CalacterPage> {
 
   // Main calculation function
   void SumR() {
-    // Parse input values to numbers, default to 0 if empty/invalid
-    double nR1 = double.tryParse(numr1.text) ?? 0; // Visa price SAR
-    double nR2 = double.tryParse(numr2.text) ?? 0; // Madinah nights
-    double nR3 =
-        double.tryParse(numr3.text) ?? 0; // Madinah price per night SAR
-    double nR4 = double.tryParse(numr4.text) ?? 0; // Makkah price per night SAR
-    double nR5 = double.tryParse(numr5.text) ?? 0; // Makkah nights
+    double nR1 = double.tryParse(numr1.text) ?? 0;
+    double nR2 = double.tryParse(numr2.text) ?? 0;
+    double nR3 = double.tryParse(numr3.text) ?? 0;
+    double nR4 = double.tryParse(numr4.text) ?? 0;
+    double nR5 = double.tryParse(numr5.text) ?? 0;
 
-    double nD1 = double.tryParse(numd1.text) ?? 0; // Transportation USD
-    double nD2 = double.tryParse(numd2.text) ?? 0; // Authority/Fees USD
-    double nD3 = double.tryParse(numd3.text) ?? 0; // Gifts USD
-    double nD4 = double.tryParse(numd4.text) ?? 0; // Company commission 1 USD
-    double nD5 = double.tryParse(numd5.text) ?? 0; // Company commission 2 USD
+    double nD1 = double.tryParse(numd1.text) ?? 0;
+    double nD2 = double.tryParse(numd2.text) ?? 0;
+    double nD3 = double.tryParse(numd3.text) ?? 0;
+    double nD4 = double.tryParse(numd4.text) ?? 0;
+    double nD5 = double.tryParse(numd5.text) ?? 0;
 
     print(
       "[SumR] Parsed Inputs - nR1: $nR1, nR2: $nR2, nR3: $nR3, nR4: $nR4, nR5: $nR5",
@@ -250,7 +248,6 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Parsed Inputs - nD1: $nD1, nD2: $nD2, nD3: $nD3, nD4: $nD4, nD5: $nD5",
     );
 
-    // NEW: Parse custom room occupancy for Madinah and Makkah separately
     double madinahRoomOccupancyFactor =
         double.tryParse(madinahRoomOccupancyController.text) ?? 0;
     double makkahRoomOccupancyFactor =
@@ -260,8 +257,6 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Room Occupancy Factors - Madinah: $madinahRoomOccupancyFactor, Makkah: $makkahRoomOccupancyFactor",
     );
 
-    // Validate room occupancy factors to prevent division by zero or negative values.
-    // Default to 1 if 0 or less to allow calculation, or consider showing an error.
     if (madinahRoomOccupancyFactor <= 0) {
       madinahRoomOccupancyFactor = 1;
       print("[SumR] Madinah Room Occupancy adjusted to 1.");
@@ -271,11 +266,9 @@ class _CalacterPageState extends State<CalacterPage> {
       print("[SumR] Makkah Room Occupancy adjusted to 1.");
     }
 
-    // Convert SAR visa price to USD (assuming 1 USD = 3.75 SAR)
     double visaPriceInUsd = nR1 / 3.75;
     print("[SumR] Visa Price in USD: $visaPriceInUsd");
 
-    // Calculate Madinah accommodation cost per person
     double madinahAccommodationCostTotalSAR = nR2 * nR3;
     double madinahAccommodationCostPerPersonUSD =
         (madinahAccommodationCostTotalSAR / 3.75) / madinahRoomOccupancyFactor;
@@ -286,7 +279,6 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Madinah Accommodation Cost Per Person USD: $madinahAccommodationCostPerPersonUSD",
     );
 
-    // Calculate Makkah accommodation cost per person
     double makkahAccommodationCostTotalSAR = nR4 * nR5;
     double makkahAccommodationCostPerPersonUSD =
         (makkahAccommodationCostTotalSAR / 3.75) / makkahRoomOccupancyFactor;
@@ -297,7 +289,6 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Makkah Accommodation Cost Per Person USD: $makkahAccommodationCostPerPersonUSD",
     );
 
-    // Total accommodation cost per person is the sum of Madinah and Makkah per-person costs
     double totalAccommodationCostPerPersonUsd =
         madinahAccommodationCostPerPersonUSD +
         makkahAccommodationCostPerPersonUSD;
@@ -305,23 +296,14 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Total Accommodation Cost Per Person USD: $totalAccommodationCostPerPersonUsd",
     );
 
-    // Calculate total fixed expenses in USD (assuming these are per group/trip fixed costs)
     double totalFixedExpensesPerGroupUsd = nD1 + nD2 + nD3 + nD4 + nD5;
     print(
       "[SumR] Total Fixed Expenses Per Group USD: $totalFixedExpensesPerGroupUsd",
     );
 
-    // Define default values for total occupancy per room type (Quad, Triple, Double)
-    // These are used to divide the *total group fixed expenses* (like transportation, fees, etc.)
-    // to get the per-person share of those fixed costs.
     int defaultQuadOccupancy = 4;
     int defaultTripleOccupancy = 3;
     int defaultDoubleOccupancy = 2;
-
-    // Calculate total price for each occupancy type:
-    // = Total Accommodation Cost Per Person (sum of Madinah & Makkah per-person costs)
-    // + Visa Price Per Person
-    // + Share of Total Fixed Group Expenses (divided by default room occupancy)
 
     double calculatedPriceQuad =
         totalAccommodationCostPerPersonUsd +
@@ -346,7 +328,6 @@ class _CalacterPageState extends State<CalacterPage> {
       "[SumR] Calculated Price Double (before rounding): $calculatedPriceDouble",
     );
 
-    // Round up results to the nearest whole number (as per common pricing practice)
     int roundedPriceQuad = calculatedPriceQuad.ceil();
     int roundedPriceTriple = calculatedPriceTriple.ceil();
     int roundedPriceDouble = calculatedPriceDouble.ceil();
@@ -355,12 +336,10 @@ class _CalacterPageState extends State<CalacterPage> {
     print("[SumR] Rounded Price Triple: $roundedPriceTriple");
     print("[SumR] Rounded Price Double: $roundedPriceDouble");
 
-    // Update the UI with the calculated results
     setState(() {
       resultQuad = roundedPriceQuad.toString();
       resultTriple = roundedPriceTriple.toString();
       resultDouble = roundedPriceDouble.toString();
-      // Store the double values to pass to ContractPage
       pricePerPersonQuad = roundedPriceQuad.toDouble();
       pricePerPersonTriple = roundedPriceTriple.toDouble();
       pricePerPersonDouble = roundedPriceDouble.toDouble();
@@ -372,10 +351,8 @@ class _CalacterPageState extends State<CalacterPage> {
 
   // Function to save or update program data to Supabase and proceed to ContractPage
   Future<void> _saveProgramAndProceed() async {
-    // Ensure calculations are performed and values are up-to-date before saving
-    SumR();
+    SumR(); // Ensure calculations are performed and values are up-to-date before saving
 
-    // Check if total pilgrims is valid before attempting to save
     if (int.tryParse(t.text) == null || int.tryParse(t.text)! <= 0) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -434,50 +411,34 @@ class _CalacterPageState extends State<CalacterPage> {
     };
 
     try {
-      if (widget.existingContractData != null &&
-          widget.existingContractData!['id'] != null) {
-        // Update existing contract program
-        await Supabase.instance.client
-            .from('contracts')
-            .update(programData)
-            .eq('id', widget.existingContractData!['id']);
+      // بما أن هذه الصفحة مخصصة للتعديل، سنقوم دائمًا بالتحديث
+      await Supabase.instance.client
+          .from('contracts')
+          .update(programData)
+          .eq(
+            'id',
+            widget.existingContractData['id'],
+          ); // نستخدم existingContractData مباشرة هنا
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'تم تحديث البرنامج بنجاح! سيتم نقلك لصفحة العقد.',
-                textDirection: TextDirection.rtl,
-              ),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تم تحديث البرنامج بنجاح! سيتم نقلك لصفحة العقد.',
+              textDirection: TextDirection.rtl,
             ),
-          );
-        }
-      } else {
-        // Insert new contract program
-        await Supabase.instance.client.from('contracts').insert(programData);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'تم حفظ البرنامج بنجاح! سيتم نقلك لصفحة العقد.',
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-          );
-        }
+          ),
+        );
       }
 
       // Navigate to ContractPage after saving the program
       if (mounted) {
-        Map<String, dynamic>? contractToPass;
-        if (widget.existingContractData != null) {
-          contractToPass = {
-            ...?widget.existingContractData, // Copy all old contract data
-            ...programData, // Merge new program data (which was just updated)
-            'id': widget.existingContractData!['id'], // Confirm ID
-          };
-        }
+        // تأكد من تمرير بيانات العقد المحدثة إلى صفحة العقد
+        Map<String, dynamic> updatedContractData = {
+          ...widget.existingContractData, // نسخ البيانات الأصلية
+          ...programData, // دمج البيانات المحدثة
+          'id': widget.existingContractData['id'], // التأكد من وجود الـ ID
+        };
 
         await Navigator.push(
           context,
@@ -488,7 +449,7 @@ class _CalacterPageState extends State<CalacterPage> {
               pricePerPersonTriple: pricePerPersonTriple,
               pricePerPersonDouble: pricePerPersonDouble,
               existingContractData:
-                  contractToPass, // Pass updated or existing contract data
+                  updatedContractData, // تمرير بيانات العقد المحدثة
             ),
           ),
         );
@@ -501,7 +462,7 @@ class _CalacterPageState extends State<CalacterPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'خطأ في حفظ/تحديث البرنامج: ${e.message}',
+              'خطأ في تحديث البرنامج: ${e.message}',
               textDirection: TextDirection.rtl,
             ),
           ),
@@ -512,7 +473,7 @@ class _CalacterPageState extends State<CalacterPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'خطأ غير متوقع عند حفظ/تحديث البرنامج: ${e.toString()}',
+              'خطأ غير متوقع عند تحديث البرنامج: ${e.toString()}',
               textDirection: TextDirection.rtl,
             ),
           ),
@@ -523,13 +484,9 @@ class _CalacterPageState extends State<CalacterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isEditing = widget.existingContractData != null;
-    final String appBarTitle = isEditing
-        ? "تعديل برنامج العقد"
-        : "إعداد برنامج جديد";
-    final String saveButtonText = isEditing
-        ? "تحديث البرنامج ومتابعة العقد"
-        : "حفظ البرنامج ومتابعة العقد";
+    // بما أن هذه الصفحة للتعديل فقط، يمكننا جعل العنوان وثابتًا
+    const String appBarTitle = "تعديل برنامج العقد";
+    const String saveButtonText = "تحديث البرنامج ومتابعة العقد";
 
     return Scaffold(
       backgroundColor: Colors.grey[50], // Light background for the whole page
@@ -545,12 +502,12 @@ class _CalacterPageState extends State<CalacterPage> {
             ),
           ),
         ),
-        title: Align(
+        title: const Align(
           alignment:
               Alignment.centerRight, // Align title to the right for Arabic
           child: Text(
             appBarTitle, // Page title in Arabic, now dynamic
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 38, // Larger font size for prominence
               color: Colors.white,
@@ -680,9 +637,10 @@ class _CalacterPageState extends State<CalacterPage> {
                                 size: 30,
                                 color: Colors.white,
                               ),
-                              label: Text(
-                                saveButtonText, // "Create/Update Contract" label in Arabic, now dynamic
-                                style: const TextStyle(
+                              label: const Text(
+                                // النص ثابت الآن
+                                saveButtonText, // "تحديث البرنامج ومتابعة العقد"
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,

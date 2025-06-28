@@ -30,14 +30,16 @@ Future<void> generatePdfContract({
   required double pricePerPersonDouble, // لإعادة حساب الليالي
   required double pricePerPersonTriple, // لإعادة حساب الليالي
   required double pricePerPersonQuad, // لإعادة حساب الليالي
+  required String madinahHotelName, // جديد: اسم فندق المدينة
+  required String makkahHotelName, // جديد: اسم فندق مكة
 }) async {
   final pdf = pw.Document();
   final pw.Font arabicFont = await arabicFontFuture; // تحميل الخط العربي
 
   // تحميل صورة الخلفية
   final ByteData bytes = await rootBundle.load(
-    'assets/images/Form.jpg',
-  ); // تأكد من المسار الصحيح لصورة الخلفية
+    'assets/images/contract_template.jpg',
+  );
   final Uint8List byteList = bytes.buffer.asUint8List();
   final pw.MemoryImage contractImage = pw.MemoryImage(byteList);
 
@@ -46,16 +48,28 @@ Future<void> generatePdfContract({
       pageFormat: PdfPageFormat.a4,
       build: (pw.Context contextPdf) {
         // حساب عدد الليالي الإجمالي بشكل أكثر دقة
-        double totalCapacityMadinah =
-            (madinahDouble * 2) + (madinahTriple * 3) + (madinahQuad * 4);
-        double totalCapacityMakkah =
-            (makkahDouble * 2) + (makkahTriple * 3) + (makkahQuad * 4);
-        double totalNights = (totalPilgrims > 0)
-            ? (totalCapacityMadinah + totalCapacityMakkah) /
-                  (2.0 * totalPilgrims)
-            : 0.0; // تجنب القسمة على صفر
         // هذا التقدير لعدد الليالي يعتمد على أن السعر للشخص الواحد لليلة الواحدة ثابت، وهو تبسيط
         // يجب أن يتم حساب الليالي بناءً على تفاصيل حزمة العمرة (عدد الليالي في المدينة وعدد الليالي في مكة)
+        // التأكد من استخدام .toDouble() لضمان القسمة العشرية وتجنب القسمة على صفر
+        double totalCapacityMadinah =
+            (madinahDouble * 2).toDouble() +
+            (madinahTriple * 3).toDouble() +
+            (madinahQuad * 4).toDouble();
+        double totalCapacityMakkah =
+            (makkahDouble * 2).toDouble() +
+            (makkahTriple * 3).toDouble() +
+            (makkahQuad * 4).toDouble();
+
+        double estimatedTotalNights =
+            (totalPilgrims > 0 && pricePerPersonDouble > 0)
+            ? (totalCapacityMadinah /
+                      (pricePerPersonDouble *
+                          2) + // قسمة على سعر السرير الثنائي لليلة واحدة
+                  totalCapacityMakkah /
+                      (pricePerPersonDouble * 2)) // نفس سعر السرير الثنائي
+            : 0.0;
+        // تقريب لأقرب عدد صحيح
+        int displayTotalNights = estimatedTotalNights.round();
 
         return pw.Stack(
           children: [
@@ -98,16 +112,44 @@ Future<void> generatePdfContract({
               ),
             ),
 
+            // جديد: اسم فندق المدينة في PDF
+            pw.Positioned(
+              top: 160, // اضبط الموضع
+              right: 120,
+              child: pw.SizedBox(
+                width: 250,
+                child: pw.Text(
+                  'فندق المدينة: ${madinahHotelName.isNotEmpty ? madinahHotelName : "غير محدد"}',
+                  textDirection: pw.TextDirection.rtl,
+                  style: pw.TextStyle(fontSize: 10, font: arabicFont),
+                  maxLines: 1,
+                ),
+              ),
+            ),
+
+            // جديد: اسم فندق مكة في PDF
+            pw.Positioned(
+              top: 180, // اضبط الموضع
+              right: 120,
+              child: pw.SizedBox(
+                width: 250,
+                child: pw.Text(
+                  'فندق مكة: ${makkahHotelName.isNotEmpty ? makkahHotelName : "غير محدد"}',
+                  textDirection: pw.TextDirection.rtl,
+                  style: pw.TextStyle(fontSize: 10, font: arabicFont),
+                  maxLines: 1,
+                ),
+              ),
+            ),
+
             // تفاصيل عدد الليالي والمعتمرين
             pw.Positioned(
-              top: 130,
+              top: 210, // اضبط الموضع
               right: 120,
               child: pw.SizedBox(
                 width: 300,
                 child: pw.Text(
-                  // تبسيط حساب الليالي ليتناسب مع البيانات المتاحة.
-                  // يفضل أن يكون عدد الليالي مدخلًا مباشرًا إذا كان مهمًا
-                  'إجمالي ${totalNights.toStringAsFixed(0)} ليلة، وعدد المعتمرين $totalPilgrims',
+                  'إجمالي ${displayTotalNights} ليلة، وعدد المعتمرين $totalPilgrims',
                   textDirection: pw.TextDirection.rtl,
                   style: pw.TextStyle(fontSize: 10, font: arabicFont),
                   maxLines: 2,
@@ -153,7 +195,7 @@ Future<void> generatePdfContract({
                 ],
                 data: [
                   ['العدد الإجمالي للمعتمرين', '$totalPilgrims', '', '', ''],
-                  ['غرف المدينة:', '', '', '', ''],
+                  ['غرف المدينة:', '', '', '', ''], // صف عنوان فرعي
                   [
                     'ثنائي',
                     madinahDouble.toString(),
@@ -186,7 +228,7 @@ Future<void> generatePdfContract({
                     '',
                     totalMadinahCost.toStringAsFixed(0),
                   ],
-                  ['غرف مكة:', '', '', '', ''],
+                  ['غرف مكة:', '', '', '', ''], // صف عنوان فرعي
                   [
                     'ثنائي',
                     '',
@@ -252,8 +294,8 @@ Future<void> generatePdfContract({
             // قسم التوقيعات
             // توقيع الوكيل
             pw.Positioned(
-              bottom: 50, // اضبط هذا
-              right: 80, // اضبط هذا
+              bottom: 50,
+              right: 80,
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
@@ -288,8 +330,8 @@ Future<void> generatePdfContract({
 
             // توقيع موظف الشركة
             pw.Positioned(
-              bottom: 50, // اضبط هذا
-              left: 80, // اضبط هذا
+              bottom: 50,
+              left: 80,
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
@@ -335,7 +377,6 @@ Future<void> generatePdfContract({
     final File file = File(path);
     await file.writeAsBytes(await pdf.save());
     if (context.mounted) {
-      // Guard against using context after widget disposed
       OpenFilex.open(path);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم إنشاء ملف PDF بنجاح في: $path')),
@@ -343,7 +384,6 @@ Future<void> generatePdfContract({
     }
   } catch (e) {
     if (context.mounted) {
-      // Guard against using context after widget disposed
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطأ في إنشاء أو حفظ ملف PDF: $e')),
       );

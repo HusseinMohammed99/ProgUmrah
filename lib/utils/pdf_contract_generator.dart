@@ -31,7 +31,9 @@ Future<void> generatePdfContract({
   required BuildContext context, // لاستخدام ScaffoldMessenger
   required double pricePerPersonDouble, // لإعادة حساب الليالي
   required double pricePerPersonTriple, // لإعادة حساب الليالي
-  required double pricePerPersonQuad, // لإعادة حساب الليالي
+  required double pricePerPersonQuad,
+  required String madinahHotelName,
+  required String makkahHotelName, // لإعادة حساب الليالي
 }) async {
   final pdf = pw.Document();
   final pw.Font arabicFont = await arabicFontFuture; // تحميل الخط العربي

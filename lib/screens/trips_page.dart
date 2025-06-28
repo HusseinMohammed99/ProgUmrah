@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:umrah/componets/card.dart'; // تأكد أن هذا المسار صحيح
-import 'package:umrah/screens/rip_overview_page.dart';
 import 'package:umrah/screens/widget/add_trap_page.dart'; // تأكد أن هذا المسار صحيح
+import 'package:umrah/screens/trip_overview_page.dart'; // جديد: استيراد صفحة نظرة عامة على الرحلة
 
 class TripsPage extends StatefulWidget {
   const TripsPage({super.key});
@@ -116,15 +116,18 @@ class _TripsPageState extends State<TripsPage> {
                 .map(
                   (trip) => CardWiget(
                     tripData: trip,
-                    onTap: () {
+                    onTap: () async {
+                      // ✅ تم إضافة 'async' هنا
                       // عند النقر على البطاقة، انتقل إلى صفحة نظرة عامة على الرحلة
-                      Navigator.push(
+                      await Navigator.push(
+                        // ✅ تم إضافة 'await' هنا
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
                               TripOverviewPage(tripData: trip),
                         ),
                       );
+                      _refreshTrips(); // ✅ تحديث الرحلات بعد العودة من صفحة نظرة عامة
                     },
                   ),
                 )
